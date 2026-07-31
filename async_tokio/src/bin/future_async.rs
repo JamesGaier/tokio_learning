@@ -1,23 +1,29 @@
 
+// make a multi threaded async executor with 10 worker threads
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
+    // make 2 racers
     let racer01: F1Racer = F1Racer::new();
     let mut racer02: F1Racer = F1Racer::new();
 
+    // name the other one something different and give him a faster lap time
     racer02.name = "Sergio Perez".to_string();
     racer02.lap_times.pop();
     racer02.lap_times.push(57);
 
+    // put those tasks into two different threads
     let handler01 = tokio::task::spawn(racer01);
     let handler02 = tokio::task::spawn(racer02);
 
     loop {
 
+        // once both tasks are finished print that
         if handler01.is_finished() && handler02.is_finished() {
             println!("All racers have finished!");        
             break;
         }
 
+        // wait a little to not throttle the cpu
         std::thread::sleep(std::time::Duration::from_millis(300));
     }
 }
@@ -44,14 +50,18 @@ impl F1Racer {
         };
     }
 
+    // do a lap
     fn do_lap(&mut self) {
         println!("{} is doing a new lap...", self.name);
-        let lap_time: Option<u8> = self.lap_times.pop();
+        // remove the last lap and save it in lap times
+        let lap_time = self.lap_times.pop();
 
+        // if the option isn't empty and the best lap time is minimal then update it
         if lap_time.is_some() && lap_time.unwrap() < self.best_lap_time {
             self.best_lap_time = lap_time.unwrap();
         }
 
+        // update the completed laps
         self.completed_laps += 1;
     }
 }
@@ -60,10 +70,17 @@ impl F1Racer {
 impl std::future::Future for F1Racer {
     // the type that the future holds
     type Output = u8;
+
+    // periodically polls the task
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        // print the thread I am in
         println!("Thread assigned is ID: {:?}", std::thread::current().id());
+
+        // print how many laps I have completed
         if self.completed_laps < self.laps {
             self.get_mut().do_lap();
+            // wakes up the future to do more work. IF YOU DO NOT DO THIS THE FUNCTION WILL HANG
+            // FOREVER!!!
             cx.waker().wake_by_ref();
             return std::task::Poll::Pending;
         }
